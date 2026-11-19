@@ -1,0 +1,12 @@
+node_modules/
+dist/
+verify/
+assets/generated/debug/
+assets/generated/masters/
+*.log
+.vercel/
+# source copies kept outside the build (the build reads assets/original + assets/generated)
+/assets/*.JPEG
+/assets/*.jpeg
+/assets/*.PNG
+/_*.mp3
