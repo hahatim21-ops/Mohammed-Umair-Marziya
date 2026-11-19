@@ -10,3 +10,6 @@ assets/generated/masters/
 /assets/*.jpeg
 /assets/*.PNG
 /_*.mp3
+
+.vercel
+.env*
