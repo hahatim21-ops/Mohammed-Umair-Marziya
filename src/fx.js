@@ -440,3 +440,127 @@ export class Burst {
     g.globalAlpha = 1;
   }
 }
+
+// ---------------------------------------------------------------- butterflies
+// One wing pair (right side) per tint; the left side is the same sprite mirrored.
+const WING_TINTS = [
+  ['#eef4fb', '#a9c0d6', '#6f89a3'], // powder blue
+  ['#fffaf0', '#efdcb4', '#b99a5c'], // ivory
+  ['#fff6d6', '#ecd08a', '#b08a3a'], // soft gold
+];
+function wingSprite(v) {
+  const key = 'wing' + v;
+  if (cache[key]) return cache[key];
+  const c = makeCanvas(64, 64);
+  const g = c.getContext('2d');
+  const [a, b, e] = WING_TINTS[v % WING_TINTS.length];
+  const fill = (path, x0, y0, x1, y1) => {
+    const gr = g.createLinearGradient(x0, y0, x1, y1);
+    gr.addColorStop(0, a);
+    gr.addColorStop(0.65, b);
+    gr.addColorStop(1, e);
+    g.fillStyle = gr;
+    g.fill(path);
+    g.strokeStyle = 'rgba(90,70,40,0.35)';
+    g.lineWidth = 1.2;
+    g.stroke(path);
+  };
+  const up = new Path2D('M3 31 C10 12 30 1 52 4 C63 6 62 20 52 27 C40 34 18 34 3 31 Z');
+  const lo = new Path2D('M3 33 C16 33 34 38 40 49 C44 58 34 63 24 59 C14 55 6 45 3 33 Z');
+  fill(up, 2, 30, 58, 6);
+  fill(lo, 2, 34, 36, 60);
+  // eye spots + veins
+  g.fillStyle = 'rgba(255,255,255,0.8)';
+  g.beginPath();
+  g.arc(46, 12, 3.2, 0, Math.PI * 2);
+  g.arc(28, 50, 2.4, 0, Math.PI * 2);
+  g.fill();
+  g.strokeStyle = 'rgba(90,70,40,0.22)';
+  g.lineWidth = 0.9;
+  g.beginPath();
+  g.moveTo(4, 31);
+  g.quadraticCurveTo(26, 18, 50, 9);
+  g.moveTo(4, 32);
+  g.quadraticCurveTo(26, 30, 50, 22);
+  g.moveTo(4, 34);
+  g.quadraticCurveTo(20, 42, 30, 55);
+  g.stroke();
+  return (cache[key] = c);
+}
+
+export class Butterflies {
+  // homes: [[x, y], ...] fractions of the canvas; each gets one butterfly
+  constructor({ homes, radius = 0.06, size = [0.04, 0.052] }) {
+    this.b = homes.map(([hx, hy], i) => ({
+      hx,
+      hy,
+      r: radius * rand(0.8, 1.2),
+      s: rand(size[0], size[1]),
+      seed: rand(0, 100),
+      spr: wingSprite(i),
+      x: hx,
+      y: hy,
+      ang: 0,
+      ph: rand(0, 6.28),
+      glide: false,
+    }));
+  }
+  update(dt, t) {
+    for (const b of this.b) {
+      // wander around the flowers along a smooth noise path, with a little bob
+      const nx = b.hx + b.r * (noise1(t * 0.28 + b.seed) - 0.5) * 2.2;
+      const ny = b.hy + b.r * 0.75 * (noise1(t * 0.23 + b.seed + 37) - 0.5) * 2.2 + Math.sin(t * 2.6 + b.seed) * 0.004;
+      const vx = (nx - b.x) / Math.max(dt, 1e-3);
+      const vy = (ny - b.y) / Math.max(dt, 1e-3);
+      b.x = nx;
+      b.y = ny;
+      // face the direction of travel (seen from above), smoothed
+      if (Math.hypot(vx, vy * 1.78) > 0.004) {
+        const target = Math.atan2(vy * 1.78, vx) + Math.PI / 2;
+        let d = target - b.ang;
+        d = Math.atan2(Math.sin(d), Math.cos(d));
+        b.ang += d * Math.min(1, dt * 2.5);
+      }
+      // flap fast, but glide now and then
+      b.glide = noise1(t * 0.6 + b.seed * 3) < 0.35;
+      b.ph += dt * (b.glide ? 9 : 24);
+    }
+  }
+  draw(g, W, H) {
+    for (const b of this.b) {
+      const s = b.s * W; // wingspan
+      const f = b.glide ? 0.8 + 0.12 * Math.sin(b.ph) : 0.18 + 0.82 * Math.abs(Math.sin(b.ph));
+      g.save();
+      g.translate(b.x * W, b.y * H);
+      g.rotate(b.ang);
+      // soft shadow so it reads against pale backgrounds
+      g.globalAlpha = 0.18;
+      g.fillStyle = '#3a3020';
+      g.beginPath();
+      g.ellipse(s * 0.06, s * 0.1, Math.max(0.5, s * 0.4 * f), s * 0.22, 0, 0, Math.PI * 2);
+      g.fill();
+      g.globalAlpha = 0.96;
+      for (const side of [1, -1]) {
+        g.save();
+        g.scale(side * f, 1);
+        g.drawImage(b.spr, 0, -s * 0.5, s * 0.5, s);
+        g.restore();
+      }
+      // body + antennae
+      g.fillStyle = '#5b4a2e';
+      g.beginPath();
+      g.ellipse(0, 0, s * 0.035, s * 0.24, 0, 0, Math.PI * 2);
+      g.fill();
+      g.strokeStyle = 'rgba(91,74,46,0.8)';
+      g.lineWidth = Math.max(0.6, s * 0.02);
+      g.beginPath();
+      g.moveTo(0, -s * 0.22);
+      g.quadraticCurveTo(-s * 0.06, -s * 0.36, -s * 0.12, -s * 0.4);
+      g.moveTo(0, -s * 0.22);
+      g.quadraticCurveTo(s * 0.06, -s * 0.36, s * 0.12, -s * 0.4);
+      g.stroke();
+      g.restore();
+    }
+    g.globalAlpha = 1;
+  }
+}

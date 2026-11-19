@@ -1,8 +1,8 @@
 // Portrait pages (2, 4, 5, 6): column sizing, living WebGL plate, text sprites, ambient FX.
 import layout from './layout.json';
 import { asset, webglOK, reduced, addTick, removeTick, loadImage, imgReady, sizeCanvas, dpr, COL_MAX } from './core.js';
-import { Living } from './living.js';
-import { Motes, Petals, Flames, Twinkles, Fountain } from './fx.js';
+import { Living, swingAngle } from './living.js';
+import { Motes, Petals, Flames, Twinkles, Fountain, Butterflies } from './fx.js';
 import * as reveal from './reveal.js';
 
 // reveal order + start times (seconds); styles (fade / ink / rise / spacing) live in layout.json
@@ -20,6 +20,20 @@ const TEXT = {
   5: 'Walima. 06th December 2026. 9:00 PM onwards. Islam Gymkhana Ground, Marine Drive.',
   6: 'Regards, Mrs Salma & Mr Abdul Hameed Maklai. Fariha & Abdulwahid Memon. Usman Memon.',
 };
+
+// Walima + Regards: the staircase at the top of the art is cropped away (fraction of the height)
+const CROP_TOP = { 5: 0.215, 6: 0.215 };
+
+// butterflies flit around these flower clusters (fractions of the full image)
+const BUTTERFLIES = {
+  2: [[0.1, 0.54], [0.9, 0.74], [0.17, 0.12]],
+  4: [[0.13, 0.6], [0.87, 0.6], [0.86, 0.9]],
+  5: [[0.1, 0.31], [0.9, 0.56], [0.2, 0.82]],
+  6: [[0.9, 0.31], [0.1, 0.56], [0.86, 0.73]],
+};
+
+// the chandelier on page 2 hangs from the flowers at the top of the arch
+const CHANDELIER_PIVOT_Y = 0.016;
 
 const pctBox = (el, b) => {
   el.style.left = b.x + '%';
@@ -154,7 +168,8 @@ export class PortraitPage {
     const L = this.L;
     const P = (v) => v / 100;
     if (this.n === 2) {
-      const cand = L.candles.map(([x, y]) => ({ x: P(x), y: P(y), r: 0.03, k: 0.75 }));
+      const cand = L.candles.map(([x, y]) => ({ x: P(x), y: P(y), r: 0.03, k: 0.75, bx: P(x), by: P(y) }));
+      this.candleFx = cand; // they ride along with the swinging chandelier
       const lan = L.lanternGlow.map(([x, y, r]) => ({ x: P(x), y: P(y), r: P(r) * 0.9, k: 0.55 }));
       this.fx.push(new Flames([...cand, ...lan]));
       const [a, b, c, d] = L.chandelier;
@@ -169,6 +184,29 @@ export class PortraitPage {
     if (this.n === 6) {
       this.petals = new Petals({ rate: 0.1, max: 4, speed: 0.035, area: [0.05, 0.95] });
       this.fx.push(this.petals);
+    }
+    if (BUTTERFLIES[this.n]) this.fx.push(new Butterflies({ homes: BUTTERFLIES[this.n] }));
+  }
+
+  chandelierBox() {
+    const [x0, , x1, y1] = this.L.chandelier;
+    return [x0 / 100, CHANDELIER_PIVOT_Y, x1 / 100, y1 / 100];
+  }
+
+  // move the candle flames with the chandelier (the same rotation the shader applies)
+  swingCandles(t) {
+    if (!this.candleFx || !this.gl) return;
+    const [x0, py, x1] = this.chandelierBox();
+    const px = (x0 + x1) / 2;
+    const a = swingAngle(t);
+    const c = Math.cos(a);
+    const s = Math.sin(a);
+    const [iw, ih] = this.L.img;
+    for (const p of this.candleFx) {
+      const dx = (p.bx - px) * iw;
+      const dy = (p.by - py) * ih;
+      p.x = px + (c * dx - s * dy) / iw;
+      p.y = py + (s * dx + c * dy) / ih;
     }
   }
 
@@ -200,6 +238,7 @@ export class PortraitPage {
         water: this.n === 5,
         drift: this.n === 4,
         basin: b ? [b.cx / 100, b.cy / 100, b.rx / 100, b.ry / 100] : null,
+        chandelier: this.n === 2 ? this.chandelierBox() : null,
         onLost: () => {
           this.canvas.classList.remove('ready');
           this.plateEl.style.visibility = '';
@@ -222,7 +261,10 @@ export class PortraitPage {
     const [iw, ih] = this.L.img;
     const sw = Math.min(vw, COL_MAX);
     const sh = (sw * ih) / iw;
-    this.el.style.height = sh + 'px';
+    const crop = CROP_TOP[this.n] || 0;
+    this.el.style.height = sh * (1 - crop) + 'px';
+    // keep the stage at full size and slide it up so the cropped band sits above the section
+    this.stage.style.top = sh / 2 - crop * sh + 'px';
     this.sw = sw;
     this.sh = sh;
     this.stage.style.setProperty('--sw', sw + 'px');
@@ -257,6 +299,7 @@ export class PortraitPage {
 
   tick(t, dt) {
     if (this.gl) this.gl.render(t);
+    this.swingCandles(t);
     const g = this.g;
     if (!this.fx.length) return;
     const W = this.sw;

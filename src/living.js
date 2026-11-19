@@ -1,6 +1,7 @@
 // "Living image": one WebGL canvas per portrait page that draws the clean plate
 // through a fragment shader. The RGB motion mask drives UV offsets:
 //   R = breeze (foliage), G = water (page 5), B = fabric / sky.
+// Page 2 also swings its chandelier like a pendulum hung from the ceiling.
 import { dpr } from './core.js';
 
 const VS = `
@@ -28,6 +29,8 @@ uniform float uOpen;
 uniform float uWater;
 uniform float uDrift;
 uniform vec4 uBasin;
+uniform vec4 uChand;   // chandelier box (uv): x0, y0(pivot), x1, y1
+uniform float uSwing;  // pendulum angle, radians
 
 float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
 float noise(vec2 p) {
@@ -72,14 +75,31 @@ void main() {
   vec2 off = vec2(0.0);
   float t = uTime;
 
-  if (m.r > 0.004) {                                   // breeze
+  if (m.r > 0.004) {                                   // breeze: leaves + flowers sway
     float ph = noise(uv * vec2(3.5, 2.5) + 3.1) * 6.2831;
-    float s = sin(t * 1.05 + ph) * 0.55
-            + sin(t * 0.47 + ph * 1.9) * 0.35
-            + (noise(uv * 3.0 + vec2(t * 0.30, -t * 0.17)) - 0.5) * 0.9;
-    s *= 1.0 + uGust * 1.4;
-    off.x += s * 2.0 * m.r;
-    off.y += (noise(uv * 4.0 + vec2(-t * 0.25, t * 0.2)) - 0.5) * 1.0 * m.r;
+    float s = sin(t * 1.15 + ph) * 0.55
+            + sin(t * 0.52 + ph * 1.9) * 0.35
+            + (noise(uv * 3.0 + vec2(t * 0.34, -t * 0.19)) - 0.5) * 0.9;
+    s *= 1.0 + uGust * 1.2;
+    // a quicker flutter on top of the slow sway, finer in scale (individual leaves)
+    float fl = sin(t * 3.1 + noise(uv * 18.0) * 6.2831) * 0.35;
+    off.x += (s * 5.0 + fl * 1.6) * m.r;
+    off.y += ((noise(uv * 4.0 + vec2(-t * 0.28, t * 0.22)) - 0.5) * 2.6 + fl * 0.8) * m.r;
+  }
+  if (uSwing != 0.0) {                                 // chandelier pendulum
+    float hw = (uChand.z - uChand.x) * 0.5;
+    float qx = abs(uv.x - (uChand.x + hw)) / hw;
+    float qy = (uv.y - uChand.y) / (uChand.w - uChand.y);
+    float w = (1.0 - smoothstep(1.0, 1.3, qx)) * (1.0 - smoothstep(1.0, 1.15, qy)) * smoothstep(-0.6, 0.0, qy);
+    if (w > 0.0) {
+      vec2 px = uv * uImg;
+      vec2 piv = vec2(uChand.x + hw, uChand.y) * uImg;
+      vec2 d = px - piv;
+      float cs = cos(-uSwing);
+      float sn = sin(-uSwing);
+      vec2 src = piv + vec2(cs * d.x - sn * d.y, sn * d.x + cs * d.y);
+      off += (px - src) * w;
+    }
   }
   if (m.b > 0.004) {                                   // fabric: slow wide wave, 6-9 s periods
     float w = sin(uv.x * 22.0 + uv.y * 3.0 + t * 0.81) * 0.6
@@ -110,6 +130,11 @@ void main() {
   gl_FragColor = vec4(c.rgb * alpha, alpha);
 }`;
 
+// gentle pendulum: ~2 degrees, two incommensurate periods so it never looks mechanical
+export function swingAngle(t) {
+  return 0.03 * Math.sin(t * 1.2) + 0.008 * Math.sin(t * 2.17 + 0.7);
+}
+
 function compile(gl, type, src) {
   const s = gl.createShader(type);
   gl.shaderSource(s, src);
@@ -139,7 +164,7 @@ export class Living {
     gl.enableVertexAttribArray(loc);
     gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
     this.u = {};
-    for (const n of ['uPlate', 'uMask', 'uImg', 'uTime', 'uGust', 'uFabric', 'uOpen', 'uWater', 'uDrift', 'uBasin']) this.u[n] = gl.getUniformLocation(prog, n);
+    for (const n of ['uPlate', 'uMask', 'uImg', 'uTime', 'uGust', 'uFabric', 'uOpen', 'uWater', 'uDrift', 'uBasin', 'uChand', 'uSwing']) this.u[n] = gl.getUniformLocation(prog, n);
     this.tex(0, plate);
     this.tex(1, mask);
     gl.uniform1i(this.u.uPlate, 0);
@@ -149,6 +174,9 @@ export class Living {
     gl.uniform1f(this.u.uDrift, opts.drift ? 1 : 0);
     const b = opts.basin || [0.5, 0.5, 1, 1];
     gl.uniform4f(this.u.uBasin, b[0], b[1], b[2], b[3]);
+    const ch = opts.chandelier || [0, 0, 1, 1];
+    gl.uniform4f(this.u.uChand, ch[0], ch[1], ch[2], ch[3]);
+    gl.uniform1f(this.u.uSwing, 0);
     gl.disable(gl.DEPTH_TEST);
     this.open = 0;
     this.fabric = 1;
@@ -205,6 +233,7 @@ export class Living {
     gl.uniform1f(this.u.uGust, this.gust);
     gl.uniform1f(this.u.uFabric, this.fabric);
     gl.uniform1f(this.u.uOpen, this.open);
+    if (this.opts.chandelier) gl.uniform1f(this.u.uSwing, swingAngle(t));
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 

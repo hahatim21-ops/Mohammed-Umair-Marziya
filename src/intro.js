@@ -3,7 +3,7 @@ import { gsap } from 'gsap';
 import layout from './layout.json';
 import { asset, webglOK, reduced, addTick, removeTick, loadImage, sizeCanvas, vibrate, viewport, rand } from './core.js';
 import { Living } from './living.js';
-import { Motes, Burst } from './fx.js';
+import { Motes, Burst, Butterflies } from './fx.js';
 import { fitPortrait } from './pages.js';
 
 const L = layout.pages['1'];
@@ -71,6 +71,8 @@ export class Intro {
     this.tick = this.tick.bind(this);
     this.dust = reduced ? null : new Motes({ count: 26, area: [0.04, 0.05, 0.96, 0.98], size: [0.003, 0.008], alpha: 0.7, rise: 0.01 });
     this.burst = new Burst();
+    // butterflies around the flower garlands at the curtain corners
+    this.flutter = reduced ? null : new Butterflies({ homes: [[0.2, 0.1], [0.8, 0.12], [0.18, 0.88]], radius: 0.05 });
 
     const m = L.blocks[0];
     Object.assign(this.monoEl.style, { left: m.x + '%', top: m.y + '%', width: m.w + '%', height: m.h + '%' });
@@ -385,6 +387,10 @@ export class Intro {
     if (this.dust) {
       this.dust.update(dt, t);
       this.dust.draw(g, this.sw, this.sh, t);
+    }
+    if (this.flutter && !this.opened) {
+      this.flutter.update(dt, t);
+      this.flutter.draw(g, this.sw, this.sh);
     }
     this.burst.update(dt);
     this.burst.draw(g, this.sw, this.sh, t);

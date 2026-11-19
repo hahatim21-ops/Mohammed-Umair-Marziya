@@ -77,20 +77,30 @@ if (lenis) lenis.on('scroll', updateBackdrop);
 else scroller.addEventListener('scroll', updateBackdrop, { passive: true });
 
 // ---------------------------------------------------------------- visibility + reveals
+// pages start animating a little before they scroll in, so nothing "switches on" in view
 const io = new IntersectionObserver(
   (entries) => {
     for (const en of entries) {
       const page = pages.find((p) => p.el === en.target);
-      if (!page) continue;
-      // render only while on screen
-      if (introDone || page === page2) page.setVisible(en.isIntersecting && (introDone || opening));
-      // text reveals play once, as the card scrolls into view
-      if (introDone && en.intersectionRatio >= 0.3) page.play();
+      if (page && (introDone || page === page2)) page.setVisible(en.isIntersecting && (introDone || opening));
+    }
+  },
+  { root: scroller, rootMargin: '35% 0px', threshold: 0 }
+);
+// text reveals play once, as the card scrolls into view
+const playIo = new IntersectionObserver(
+  (entries) => {
+    for (const en of entries) {
+      const page = pages.find((p) => p.el === en.target);
+      if (page && introDone && en.intersectionRatio >= 0.3) page.play();
     }
   },
   { root: scroller, threshold: [0, 0.3] }
 );
-pages.forEach((p) => io.observe(p.el));
+pages.forEach((p) => {
+  io.observe(p.el);
+  playIo.observe(p.el);
+});
 
 // ---------------------------------------------------------------- layout
 function layoutAll() {
@@ -127,9 +137,10 @@ const intro = new Intro({
     music.reveal();
     page2.play();
     // pick up whatever the observer already knows
+    const m = window.innerHeight * 0.35;
     for (const p of pages) {
       const r = p.el.getBoundingClientRect();
-      p.setVisible(r.bottom > 0 && r.top < window.innerHeight);
+      p.setVisible(r.bottom > -m && r.top < window.innerHeight + m);
     }
   },
 });
