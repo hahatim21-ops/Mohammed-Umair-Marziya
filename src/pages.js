@@ -15,10 +15,10 @@ export const SEQ = {
 
 // screen-reader transcript of each artwork (wording exactly as printed)
 const TEXT = {
-  2: 'Bismillah ir-Rahman ir-Rahim. In the name of Allah, the most beneficient, the most merciful. With the blessings of Late Mr Aboobaker Memon & Mrs Rukaiya Memon. Mrs Taskeen & Mr Farooq Memon cordially invite you to the Walima of Mohammed Umar & Marziya (D/O Saba & Faisal Motiwala).',
+  2: 'Bismillah ir-Rahman ir-Rahim. In the name of Allah, the most beneficient, the most merciful. With the blessings of Late Mr Aboobaker Memon & Mrs Rukaiya Memon. Mrs Taskeen & Mr Farooq Memon cordially invite you to the Wedding of Mohammed Umar & Marziya (D/O Saba & Faisal Motiwala).',
   4: 'Nikah. 03rd December 2026. After Namaz e Isha. Masjid e Akash, Agripada.',
   5: 'Walima. 06th December 2026. 9:00 PM onwards. Islam Gymkhana Ground, Marine Drive.',
-  6: 'Regards, Mrs Salma & Mr Abdul Hameed Maklai. Fariha & Abdulwahid Memon. Usman Memon.',
+  6: 'Regards, Mrs Salma & Mr Abdul Hamid Maklai. Abdul Wahid, Fariha, Usman & Yusra.',
 };
 
 // Walima + Regards: the staircase at the top of the art is cropped away (fraction of the height)

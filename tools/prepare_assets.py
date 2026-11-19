@@ -38,11 +38,12 @@ PAGES = {
     1: dict(file="1_MUM.JPEG", blocks=[]),
     2: dict(
         file="2_MUM.JPEG",
+        despeck=True,  # artwork supplied as a compressed JPEG
         blocks=[
             dict(id="bismillah", box=(390, 366, 732, 458), reveal="fade", shimmer=True),
             dict(id="inname", box=(250, 474, 830, 547), reveal="fade"),
             dict(id="blessings", box=(274, 566, 792, 700), reveal="fade"),
-            dict(id="hosts", box=(224, 728, 832, 852), reveal="fade"),
+            dict(id="hosts", box=(224, 728, 836, 852), reveal="fade"),
             dict(id="groom", box=(256, 868, 864, 1050), reveal="ink", k=61),
             dict(id="amp", box=(500, 1058, 590, 1148), reveal="fade", k=61),
             dict(id="bride", box=(304, 1164, 746, 1360), reveal="ink", k=61),
@@ -79,10 +80,11 @@ PAGES = {
     ),
     6: dict(
         file="6_MUM.JPEG",
+        despeck=True,
         blocks=[
             dict(id="title", box=(376, 620, 704, 730), reveal="ink", k=61),
             dict(id="names1", box=(202, 812, 878, 940), reveal="fade"),
-            dict(id="names2", box=(152, 1020, 928, 1076), reveal="fade"),
+            dict(id="names2", box=(140, 1020, 940, 1078), reveal="fade"),
             dict(id="names3", box=(348, 1088, 732, 1144), reveal="fade"),
             dict(id="credit", box=(368, 1454, 606, 1494), reveal="fade", faint=True),
         ],
@@ -344,6 +346,29 @@ def clean_text(img: np.ndarray, blocks: list[dict]):
     seed_owner[labels[ys, xs]] = owner[ys, xs]
     region_owner = np.where(inpaint_mask > 0, seed_owner[labels], 0)
     return clean, region_owner, colours, inpaint_mask
+
+
+def despeck(pnum: int, clean: np.ndarray, owner: np.ndarray, blocks: list[dict]):
+    """JPEG ringing around lettering leaves faint dots on the plate. On flat background only,
+    replace them with the local median and hand them to the nearest block's sprite, so
+    plate + sprites still rebuild the artwork exactly (in place)."""
+    solids = MOTION.get(pnum, {}).get("solid", [])
+    for bi, blk in enumerate(blocks):
+        x0, y0, x1, y1 = blk["box"]
+        x0, y0, x1, y1 = max(0, x0 - 18), max(0, y0 - 18), min(W, x1 + 18), min(H, y1 + 18)
+        sub = clean[y0:y1, x0:x1]
+        med = cv2.medianBlur(sub, 31)
+        Lm, Ls = lum(med), lum(sub)
+        mu = cv2.blur(Lm, (15, 15))
+        sd = np.sqrt(np.maximum(cv2.blur(Lm * Lm, (15, 15)) - mu * mu, 0))
+        flat = (sd < 2.5) & (cv2.cvtColor(med, cv2.COLOR_RGB2HSV)[..., 1] < 70)
+        spk = (np.abs(Lm - Ls) > 2.5) & flat
+        spk = (cv2.dilate(spk.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0) & flat
+        for (sx0, sy0, sx1, sy1) in solids:  # never touch the chandelier / lanterns
+            spk[max(0, sy0 - y0):max(0, sy1 - y0), max(0, sx0 - x0):max(0, sx1 - x0)] = False
+        sub[spk] = med[spk]
+        o = owner[y0:y1, x0:x1]
+        o[spk & (o == 0)] = bi + 1
 
 
 # ---------------------------------------------------------------------------
@@ -723,6 +748,8 @@ def main():
         img = load(PAGES[pnum]["file"])
         blocks = PAGES[pnum]["blocks"]
         clean, owner, colours, inpaint_mask = clean_text(img, blocks)
+        if PAGES[pnum].get("despeck"):
+            despeck(pnum, clean, owner, blocks)
         Image.fromarray(clean).save(MASTERS / f"page{pnum}_clean.png")
         debug_masks(pnum, img, inpaint_mask)
         entries, comp = export_sprites(pnum, img, clean, owner, colours, blocks)
